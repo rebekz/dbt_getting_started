@@ -85,6 +85,9 @@ spark = (
     .config("spark.sql.sources.partitionOverwriteMode", "dynamic")
     .config("spark.databricks.delta.retentionDurationCheck.enabled", "false")
     .config("spark.sql.session.timeZone", "UTC")
+    .config("spark.jars.packages", "io.delta:delta-spark_2.12:3.1.0")
+    .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+    .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
     .getOrCreate()
 )
 
