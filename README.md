@@ -133,10 +133,39 @@ dbt docs generate
 dbt docs serve
 ```
 
+## 🧪 Seed Data Options
+
+You can load the provided sample CSVs in two ways:
+
+1. Configure dbt to include the root-level `data_seeds/` directory:
+
+```yaml
+# my_first_project/dbt_project.yml
+seed-paths: ["seeds", "../data_seeds"]
+```
+
+2. Or copy the CSVs into the project's default seed folder:
+
+```bash
+cp -R data_seeds my_first_project/seeds/raw
+```
+
+Then run:
+
+```bash
+cd my_first_project
+dbt seed
+```
+
 ## 📁 Project Structure
 
 ```
 dbt_get_started/
+├── data_seeds/                 # Sample CSVs for seeding
+│   ├── raw_customers.csv
+│   ├── raw_orders.csv
+│   ├── raw_order_items.csv
+│   └── raw_products.csv
 ├── my_first_project/              # Main dbt project
 │   ├── models/
 │   │   ├── staging/               # Raw data cleaning & standardization
@@ -154,12 +183,8 @@ dbt_get_started/
 │   │   │   └── fct_product_performance.sql
 │   │   └── ml/                    # ML feature engineering
 │   │       └── ml_customer_features.sql
-│   ├── seeds/                     # Sample data
+│   ├── seeds/                     # Default seed folder (configure to include ../data_seeds)
 │   │   └── raw/
-│   │       ├── raw_customers.csv
-│   │       ├── raw_orders.csv
-│   │       ├── raw_order_items.csv
-│   │       └── raw_products.csv
 │   ├── tests/                     # Custom data quality tests
 │   ├── dbt_project.yml           # Project configuration
 │   └── my_dbt.duckdb             # DuckDB database
