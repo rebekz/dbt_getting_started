@@ -69,38 +69,79 @@ customer_id,email,first_name,last_name,country,created_at
 5,charlie.brown@email.com,Charlie,Brown,US,2023-04-05
 ```
 
-(Susun file `raw_orders.csv`, `raw_order_items.csv`, dan `raw_products.csv` persis seperti referensi.)
+(Susun file `raw_orders.csv`, `raw_order_items.csv`, dan `raw_products.csv` persis seperti referensi di bawah agar pipeline berjalan tanpa error.)
+
+**data_seeds/raw_orders.csv**
+```csv
+order_id,customer_id,order_date,status,shipping_cost,total_amount
+1001,1,2024-01-18,completed,8.50,128.49
+1002,2,2024-01-19,processing,5.00,49.99
+1003,3,2024-02-02,completed,7.25,215.00
+1004,4,2024-02-10,cancelled,0.00,0.00
+1005,1,2024-03-14,completed,6.75,94.50
+```
+
+**data_seeds/raw_order_items.csv**
+```csv
+order_item_id,order_id,product_id,quantity,unit_price
+20001,1001,101,1,79.99
+20002,1001,102,2,19.25
+20003,1002,103,1,49.99
+20004,1003,104,3,55.00
+20005,1003,105,1,50.00
+20006,1005,101,1,79.99
+20007,1005,106,1,15.00
+```
+
+**data_seeds/raw_products.csv**
+```csv
+product_id,product_name,category,cost_price,list_price
+101,Wireless Keyboard,Electronics,55.00,79.99
+102,Insulated Bottle,Home,11.00,19.25
+103,Noise Cancelling Headphones,Electronics,120.00,199.99
+104,Smart Speaker,Electronics,80.00,129.99
+105,Standing Desk,Office,200.00,279.00
+106,Ceramic Mug,Home,6.00,15.00
+```
 
 ### 1.3. Membuat Bronze Layer
 
 `src/pipeline.py`
 ```python
 from pathlib import Path
+
+from delta import configure_spark_with_delta_pip
 from pyspark.sql import SparkSession
 
-spark = (
+builder = (
     SparkSession.builder
     .appName("ecommerce-pyspark-pipeline")
-    .config("spark.sql.shuffle.partitions", 4)
+    .config("spark.sql.shuffle.partitions", "4")
     .config("spark.sql.sources.partitionOverwriteMode", "dynamic")
-    .config("spark.databricks.delta.retentionDurationCheck.enabled", "false")
     .config("spark.sql.session.timeZone", "UTC")
-    .config("spark.jars.packages", "io.delta:delta-spark_2.12:3.1.0")
     .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
     .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
-    .getOrCreate()
 )
 
-base_path = Path("./lakehouse")
+spark = configure_spark_with_delta_pip(builder).getOrCreate()
+spark.conf.set("spark.databricks.delta.retentionDurationCheck.enabled", "false")
+
+base_path = Path("lakehouse")
 bronze_path = base_path / "bronze"
 bronze_path.mkdir(parents=True, exist_ok=True)
 
+for layer in ("silver", "gold", "intermediate", "ml"):
+    (base_path / layer).mkdir(parents=True, exist_ok=True)
+
+Path("artifacts").mkdir(exist_ok=True)
+
 def ingest_csv(name: str) -> None:
+    source_path = Path("data_seeds") / f"raw_{name}.csv"
     df = (
         spark.read
         .option("header", True)
         .option("inferSchema", True)
-        .csv(f"data_seeds/raw_{name}.csv")
+        .csv(str(source_path))
     )
 
     (
@@ -141,16 +182,23 @@ from pyspark.sql import functions as F
 silver_path = base_path / "silver"
 silver_path.mkdir(parents=True, exist_ok=True)
 
+customers_bronze = spark.table("bronze.customers")
+country_expr = (
+    F.upper(F.trim(F.col("country")))
+    if "country" in customers_bronze.columns
+    else F.lit("US")
+)
+email_expr = F.lower(F.trim(F.col("email")))
+
 stg_customers = (
-    spark.table("bronze.customers")
-    .select(
+    customers_bronze.select(
         "customer_id",
-        F.lower(F.trim("email")).alias("email"),
-        F.initcap(F.trim("first_name")).alias("first_name"),
-        F.initcap(F.trim("last_name")).alias("last_name"),
-        F.upper(F.trim("country")).alias("country"),
-        F.to_date("created_at").alias("customer_created_at"),
-        F.when(F.col("email").contains("@"), F.lit(True)).otherwise(F.lit(False)).alias("is_valid_email"),
+        email_expr.alias("email"),
+        F.initcap(F.trim(F.col("first_name"))).alias("first_name"),
+        F.initcap(F.trim(F.col("last_name"))).alias("last_name"),
+        country_expr.alias("country"),
+        F.to_date(F.col("created_at")).alias("customer_created_at"),
+        F.col("email").contains("@").alias("is_valid_email"),
         F.current_timestamp().alias("spark_loaded_at"),
     )
     .filter("is_valid_email")
@@ -163,19 +211,26 @@ spark.read.format("delta").load(str(silver_path / "stg_customers")).createOrRepl
 ### 2.2. Transformasi Orders, Order Items, Products
 
 ```python
+orders_bronze = spark.table("bronze.orders")
+status_expr = F.lower(F.trim(F.col("status")))
+shipping_cost_expr = (
+    F.col("shipping_cost").cast("decimal(10,2)")
+    if "shipping_cost" in orders_bronze.columns
+    else F.lit(0).cast("decimal(10,2)")
+)
+
 stg_orders = (
-    spark.table("bronze.orders")
-    .select(
+    orders_bronze.select(
         "order_id",
         "customer_id",
-        F.to_date("order_date").alias("order_date"),
-        F.lower(F.trim("status")).alias("order_status"),
-        F.col("shipping_cost").cast("decimal(10,2)").alias("shipping_cost"),
+        F.to_date(F.col("order_date")).alias("order_date"),
+        status_expr.alias("order_status"),
+        shipping_cost_expr.alias("shipping_cost"),
         F.year("order_date").alias("order_year"),
         F.month("order_date").alias("order_month"),
         F.quarter("order_date").alias("order_quarter"),
         F.date_format("order_date", "EEEE").alias("order_day_of_week"),
-        F.when(F.col("status") == "completed", F.lit(True)).otherwise(F.lit(False)).alias("is_completed"),
+        F.when(status_expr.isin("completed", "delivered"), F.lit(True)).otherwise(F.lit(False)).alias("is_completed"),
         F.current_timestamp().alias("spark_loaded_at"),
     )
 )
@@ -194,16 +249,23 @@ stg_order_items = (
     .filter(F.col("quantity") > 0)
 )
 
+products_bronze = spark.table("bronze.products")
+has_list_price = "list_price" in products_bronze.columns
+has_cost_price = "cost_price" in products_bronze.columns
+base_price_col = F.col("list_price") if has_list_price else F.col("price")
+cost_price_col = F.col("cost_price") if has_cost_price else base_price_col * F.lit(0.65)
+profit_margin_col = base_price_col - cost_price_col
+denominator_col = F.when(base_price_col != 0, base_price_col).otherwise(F.lit(1))
+
 stg_products = (
-    spark.table("bronze.products")
-    .select(
+    products_bronze.select(
         "product_id",
-        F.trim("product_name").alias("product_name"),
-        F.initcap(F.trim("category")).alias("category"),
-        F.col("cost_price").cast("decimal(10,2)").alias("cost_price"),
-        F.col("list_price").cast("decimal(10,2)").alias("list_price"),
-        (F.col("list_price") - F.col("cost_price")).cast("decimal(10,2)").alias("profit_margin"),
-        (((F.col("list_price") - F.col("cost_price")) / F.col("list_price")) * 100).cast("decimal(5,2)").alias("profit_margin_pct"),
+        F.trim(F.col("product_name")).alias("product_name"),
+        F.initcap(F.trim(F.col("category"))).alias("category"),
+        F.round(cost_price_col, 2).cast("decimal(10,2)").alias("cost_price"),
+        F.round(base_price_col, 2).cast("decimal(10,2)").alias("list_price"),
+        F.round(profit_margin_col, 2).cast("decimal(10,2)").alias("profit_margin"),
+        F.round((profit_margin_col / denominator_col) * 100, 2).cast("decimal(5,2)").alias("profit_margin_pct"),
         F.current_timestamp().alias("spark_loaded_at"),
     )
 )
@@ -250,51 +312,66 @@ int_customer_orders.createOrReplaceTempView("int_customer_orders")
 ### 3.2. `int_customer_rfm`
 
 ```python
-spark.sql("CREATE OR REPLACE TEMP VIEW analysis_date AS SELECT MAX(order_date) AS max_date FROM int_customer_orders")
+spark.sql(
+    """
+    CREATE OR REPLACE TEMP VIEW analysis_date AS
+    SELECT MAX(order_date) AS max_date
+    FROM int_customer_orders
+    """
+)
 
 int_customer_rfm = spark.sql(
     """
     WITH rfm_calc AS (
         SELECT
             co.customer_id,
-            DATEDIFF('day', MAX(co.order_date), ad.max_date) AS recency_days,
+            DATEDIFF(ad.max_date, MAX(co.order_date)) AS recency_days,
             COUNT(DISTINCT co.order_id) AS frequency,
             SUM(co.order_total) AS monetary_value,
             AVG(co.order_total) AS avg_order_value,
             MIN(co.order_date) AS first_order_date,
             MAX(co.order_date) AS last_order_date,
-            DATEDIFF('day', MIN(co.order_date), MAX(co.order_date)) AS customer_tenure_days
+            DATEDIFF(MAX(co.order_date), MIN(co.order_date)) AS customer_tenure_days
         FROM int_customer_orders co
         CROSS JOIN analysis_date ad
         GROUP BY co.customer_id, ad.max_date
+    ),
+    rfm_scored AS (
+        SELECT
+            rfm_calc.*,
+            CASE
+                WHEN recency_days <= 30 THEN 5
+                WHEN recency_days <= 60 THEN 4
+                WHEN recency_days <= 90 THEN 3
+                WHEN recency_days <= 180 THEN 2
+                ELSE 1
+            END AS recency_score,
+            CASE
+                WHEN frequency >= 5 THEN 5
+                WHEN frequency >= 4 THEN 4
+                WHEN frequency >= 3 THEN 3
+                WHEN frequency >= 2 THEN 2
+                ELSE 1
+            END AS frequency_score,
+            CASE
+                WHEN monetary_value >= 500 THEN 5
+                WHEN monetary_value >= 300 THEN 4
+                WHEN monetary_value >= 200 THEN 3
+                WHEN monetary_value >= 100 THEN 2
+                ELSE 1
+            END AS monetary_score
+        FROM rfm_calc
     )
 
     SELECT
-        *,
-        CASE
-            WHEN recency_days <= 30 THEN 5
-            WHEN recency_days <= 60 THEN 4
-            WHEN recency_days <= 90 THEN 3
-            WHEN recency_days <= 180 THEN 2
-            ELSE 1
-        END AS recency_score,
-        CASE
-            WHEN frequency >= 5 THEN 5
-            WHEN frequency >= 4 THEN 4
-            WHEN frequency >= 3 THEN 3
-            WHEN frequency >= 2 THEN 2
-            ELSE 1
-        END AS frequency_score,
-        CASE
-            WHEN monetary_value >= 500 THEN 5
-            WHEN monetary_value >= 300 THEN 4
-            WHEN monetary_value >= 200 THEN 3
-            WHEN monetary_value >= 100 THEN 2
-            ELSE 1
-        END AS monetary_score,
-        recency_score + frequency_score + monetary_score AS rfm_total_score,
-        CONCAT(recency_score, frequency_score, monetary_score) AS rfm_segment_code
-    FROM rfm_calc
+        rfm_scored.*,
+        (recency_score + frequency_score + monetary_score) AS rfm_total_score,
+        CONCAT(
+            CAST(recency_score AS STRING),
+            CAST(frequency_score AS STRING),
+            CAST(monetary_score AS STRING)
+        ) AS rfm_segment_code
+    FROM rfm_scored
     """
 )
 
@@ -454,9 +531,9 @@ fct_product_performance = spark.sql(
     """
     WITH percentile_stats AS (
         SELECT
-            percentile_cont(0.8) WITHIN GROUP (ORDER BY revenue) AS p80,
-            percentile_cont(0.5) WITHIN GROUP (ORDER BY revenue) AS p50,
-            percentile_cont(0.2) WITHIN GROUP (ORDER BY revenue) AS p20
+            percentile_approx(revenue, 0.8) AS p80,
+            percentile_approx(revenue, 0.5) AS p50,
+            percentile_approx(revenue, 0.2) AS p20
         FROM int_product_metrics
     )
 
@@ -496,11 +573,14 @@ ml_customer_features = spark.sql(
             STDDEV(order_total) AS order_value_volatility,
             MAX(order_total) AS max_order_value,
             MIN(order_total) AS min_order_value,
-            AVG(DATEDIFF('day', LAG(order_date) OVER (PARTITION BY customer_id ORDER BY order_date), order_date)) AS avg_days_between_orders,
+            AVG(DATEDIFF(order_date, LAG(order_date) OVER (PARTITION BY customer_id ORDER BY order_date))) AS avg_days_between_orders,
             CASE
                 WHEN COUNT(*) >= 3 THEN
-                    SUM(CASE WHEN order_date >= DATEADD('day', -90, CURRENT_DATE) THEN 1 ELSE 0 END) :: DOUBLE /
-                    NULLIF(SUM(CASE WHEN order_date >= DATEADD('day', -180, CURRENT_DATE) AND order_date < DATEADD('day', -90, CURRENT_DATE) THEN 1 ELSE 0 END), 0)
+                    CASE
+                        WHEN SUM(CASE WHEN order_date >= DATE_ADD(CURRENT_DATE(), -180) AND order_date < DATE_ADD(CURRENT_DATE(), -90) THEN 1 ELSE 0 END) = 0 THEN NULL
+                        ELSE CAST(SUM(CASE WHEN order_date >= DATE_ADD(CURRENT_DATE(), -90) THEN 1 ELSE 0 END) AS DOUBLE) /
+                             SUM(CASE WHEN order_date >= DATE_ADD(CURRENT_DATE(), -180) AND order_date < DATE_ADD(CURRENT_DATE(), -90) THEN 1 ELSE 0 END)
+                    END
                 ELSE NULL
             END AS order_trend_ratio
         FROM int_customer_orders
@@ -511,7 +591,7 @@ ml_customer_features = spark.sql(
         cm.customer_id,
         CASE WHEN cm.churn_risk IN ('High', 'Medium') THEN 1 ELSE 0 END AS is_churn_risk,
         cm.country,
-        DATEDIFF('day', cm.customer_created_at, CURRENT_DATE) AS account_age_days,
+        DATEDIFF(CURRENT_DATE(), cm.customer_created_at) AS account_age_days,
         cm.recency_days,
         cm.frequency,
         cm.monetary_value,
@@ -633,7 +713,7 @@ ORDER BY recency_score, frequency_score;
 ### 7.1. Validasi dengan Great Expectations (Opsional)
 
 ```python
-from great_expectations.dataset import SparkDFDataset
+from great_expectations.dataset.sparkdf_dataset import SparkDFDataset
 
 ge_dataset = SparkDFDataset(fct_customer_metrics)
 ge_dataset.expect_column_values_to_not_be_null("customer_id")
@@ -662,6 +742,8 @@ assert invalid_rfm == 0, "RFM scores out of range"
 ## Modul 8: Orkestrasi & Deploy
 
 ### 8.1. Menjalankan Pipeline
+
+Jika seluruh kode modul digabung dalam `src/pipeline.py`, cukup jalankan perintah pertama di bawah. Bila Anda memecah pipeline menjadi job per layer, salin potongan kode modul di atas ke skrip di `src/jobs/` sebelum menjalankan contoh perintah kedua.
 
 ```bash
 # Jalankan seluruh pipeline lokal
