@@ -1,0 +1,8 @@
+order_id,customer_id,order_date,status,total_amount
+5000,1,2024-04-02,shipped,105.98
+5001,2,2024-04-05,processing,12.50
+5002,1,2024-04-06,cancelled,29.00
+5003,3,2024-04-10,delivered,84.24
+5004,4,2024-04-12,delivered,25.99
+
+

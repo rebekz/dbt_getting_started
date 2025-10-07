@@ -1,0 +1,8 @@
+product_id,product_name,category,price,is_active
+100,Wireless Mouse,Electronics,25.99,true
+101,Mechanical Keyboard,Electronics,79.99,true
+102,Water Bottle,Home,12.50,true
+103,Notebook,Office,4.25,true
+104,Desk Lamp,Home,29.00,false
+
+
