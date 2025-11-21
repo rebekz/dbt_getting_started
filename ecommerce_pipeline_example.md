@@ -14,7 +14,7 @@ You work for **ShopSmart**, a growing e-commerce company that sells electronics,
 For this tutorial, we'll use CSV files that simulate real e-commerce data. This makes it easy to follow along without setting up a database!
 
 ### CSV Data Files (seeds/)
-- `raw_users.csv` - Customer registration data
+- `raw_customers.csv` - Customer registration data
 - `raw_orders.csv` - Order transactions
 - `raw_order_items.csv` - Individual items within orders
 - `raw_products.csv` - Product catalog
@@ -42,23 +42,23 @@ dbt --version
 ### 2. Initialize the dbt Project
 
 ```bash
-dbt init shopmart_analytics
-cd shopmart_analytics
+dbt init my_first_project
+cd my_first_project
 ```
 
 ### 3. Configure DuckDB Connection
 
 `profiles.yml`:
 ```yaml
-shopmart_analytics:
+my_first_project:
   outputs:
     dev:
       type: duckdb
-      path: 'shopmart.duckdb'
+      path: 'my_dbt.duckdb'
       threads: 4
     prod:
       type: duckdb
-      path: 'shopmart_prod.duckdb'
+      path: 'my_dbt_prod.duckdb'
       threads: 8
   target: dev
 ```
@@ -73,11 +73,11 @@ shopmart_analytics:
 
 `dbt_project.yml`:
 ```yaml
-name: 'shopmart_analytics'
+name: 'my_first_project'
 version: '1.0.0'
 config-version: 2
 
-profile: 'shopmart_analytics'
+profile: 'my_first_project'
 
 model-paths: ["models"]
 analysis-paths: ["analyses"]
@@ -92,7 +92,7 @@ clean-targets:
   - "dbt_packages"
 
 models:
-  shopmart_analytics:
+  my_first_project:
     staging:
       +materialized: view
       +tags: ["staging"]
@@ -147,7 +147,7 @@ product_id,product_name,category_id,brand,price,cost,sku,is_active,created_at
 108,Blender,8,Vitamix,399.99,200.00,VITA-BLEND-5200,true,2023-03-05
 ```
 
-`seeds/raw_users.csv`:
+`seeds/raw_customers.csv`:
 ```csv
 user_id,email,first_name,last_name,date_of_birth,phone,city,state,country,status,created_at,updated_at
 1,john.doe@email.com,John,Doe,1985-06-15,555-0101,New York,NY,USA,active,2023-01-15,2023-01-15
@@ -202,7 +202,7 @@ order_item_id,order_id,product_id,quantity,unit_price,created_at,updated_at
 version: 2
 
 seeds:
-  - name: raw_users
+  - name: raw_customers
     description: Customer registration and profile data from CSV
     columns:
       - name: user_id
@@ -238,7 +238,7 @@ seeds:
         tests:
           - not_null
           - relationships:
-              to: ref('raw_users')
+              to: ref('raw_customers')
               field: user_id
       - name: order_status
         description: Current order status
@@ -317,7 +317,7 @@ seeds:
 `models/staging/stg_ecommerce__users.sql`:
 ```sql
 WITH source_data AS (
-    SELECT * FROM {{ ref('raw_users') }}
+    SELECT * FROM {{ ref('raw_customers') }}
 ),
 
 cleaned AS (
@@ -952,7 +952,7 @@ Follow these steps to run the entire pipeline:
 
 ```bash
 # 1. Navigate to your project
-cd shopmart_analytics
+cd my_first_project
 
 # 2. Load all CSV data into DuckDB
 dbt seed
@@ -974,11 +974,11 @@ dbt show --select marketing_performance --limit 10
 
 ### Key Files Structure
 ```
-shopmart_analytics/
+my_first_project/
 ├── dbt_project.yml
 ├── profiles.yml
 ├── seeds/
-│   ├── raw_users.csv
+│   ├── raw_customers.csv
 │   ├── raw_orders.csv
 │   ├── raw_order_items.csv
 │   ├── raw_products.csv

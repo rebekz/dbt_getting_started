@@ -1,8 +1,9 @@
-product_id,product_name,category,price,is_active
-100,Wireless Mouse,Electronics,25.99,true
-101,Mechanical Keyboard,Electronics,79.99,true
-102,Water Bottle,Home,12.50,true
-103,Notebook,Office,4.25,true
-104,Desk Lamp,Home,29.00,false
-
-
+product_id,product_name,category_id,brand,price,cost,sku,is_active,created_at
+101,iPhone 14 Pro,2,Apple,999.00,700.00,APPL-IP14P-128,true,2023-01-15
+102,Samsung Galaxy S23,2,Samsung,849.00,600.00,SAMS-GS23-256,true,2023-01-20
+103,MacBook Air M2,3,Apple,1299.00,900.00,APPL-MBA-M2,true,2023-02-01
+104,Dell XPS 13,3,Dell,1099.00,750.00,DELL-XPS13-512,true,2023-02-15
+105,Men's Jeans,5,Levi's,89.99,35.00,LEVI-JEANS-32,true,2023-01-10
+106,Women's Dress,6,Zara,79.99,25.00,ZARA-DRESS-M,true,2023-01-25
+107,Coffee Maker,8,Keurig,149.99,75.00,KEUR-CM-K55,true,2023-03-01
+108,Blender,8,Vitamix,399.99,200.00,VITA-BLEND-5200,true,2023-03-05

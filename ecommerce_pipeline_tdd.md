@@ -17,7 +17,7 @@ This document defines the technical design for the ShopSmart analytics pipeline 
 - **Platform/Infra**: Support storage, scheduling, and observability if deployed beyond local DuckDB.
 
 ## 4. Architecture Overview
-- **Storage**: DuckDB files (`shopmart.duckdb` for dev, `shopmart_prod.duckdb` for prod) hold both seeds and model outputs.
+- **Storage**: DuckDB files (`my_dbt.duckdb` for dev, `my_dbt_prod.duckdb` for prod) hold both seeds and model outputs.
 - **Transformation Engine**: dbt-core orchestrates SQL transformations with environment-specific profiles.
 - **Input Interface**: CSV seeds version-controlled under `seeds/`. Loaded via `dbt seed`.
 - **Semantic Layers**: Staging views, intermediate ephemeral models, and materialized mart tables.
@@ -68,7 +68,7 @@ raw CSVs → staging views → intermediate ephemeral models → marts (core + m
 ## 5. Source Data Inventory
 | Source | Path | Description | Refresh | Notes |
 | --- | --- | --- | --- | --- |
-| Users | `seeds/raw_users.csv` | Customer registration attributes. | Batch seed | Contains registration timestamps, geographic info. |
+| Users | `seeds/raw_customers.csv` | Customer registration attributes. | Batch seed | Contains registration timestamps, geographic info. |
 | Orders | `seeds/raw_orders.csv` | Order headers with customer, status, totals. | Batch seed | Primary key `order_id`; includes coupon usage. |
 | Order Items | `seeds/raw_order_items.csv` | Line-level items associated with orders. | Batch seed | Contains product linkage, quantity, price, discounts. |
 | Products | `seeds/raw_products.csv` | Product catalog metadata. | Batch seed | Includes category, brand, cost, price. |
@@ -116,7 +116,7 @@ All marts materialize as tables to support downstream BI tools and incremental r
 
 ## 7. Configuration & Parameters
 - `dbt_project.yml` defines folder-level materializations and tag hierarchy.
-- Profile `shopmart_analytics` manages DuckDB connections and thread counts.
+- Profile `my_first_project` manages DuckDB connections and thread counts.
 - Variables defined in `dbt_project.yml`:
   - `start_date`: `'2023-01-01'` used by date filters (e.g., incremental seeds or KPI windows).
   - `high_value_customer_threshold`: `1000` controlling customer segment classification.

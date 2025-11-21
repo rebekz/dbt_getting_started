@@ -113,25 +113,34 @@ uv python install 3.12
 git clone <repository-url>
 cd dbt_get_started
 
-# Install dependencies
+# Install all Python dependencies (dbt + PySpark + GE)
 uv sync
 
-# Navigate to the project
-cd my_first_project
-
-# Load seed data
-dbt seed
-
-# Run all models
-dbt run
-
-# Run tests
-dbt test
-
-# Generate and view documentation
-dbt docs generate
-dbt docs serve
+# Run dbt commands from the repo root via uv
+uv run dbt seed --project-dir my_first_project
+uv run dbt run --project-dir my_first_project
+uv run dbt test --project-dir my_first_project
+uv run dbt docs generate --project-dir my_first_project
+uv run dbt docs serve --project-dir my_first_project
 ```
+
+### PySpark + Delta Pipeline (matches `ecommerce_pyspark_end_to_end.md`)
+
+```bash
+# 1. Ensure dependencies are installed once
+uv sync
+
+# 2. Run the PySpark / Delta / GE pipeline via uv
+uv run pyspark-pipeline
+
+# Optional: call spark-submit explicitly (still via uv env)
+uv run spark-submit --packages io.delta:delta-spark_2.12:3.1.0 pyspark_pipeline/pipeline.py
+```
+
+Outputs land in `lakehouse/{bronze,silver,intermediate,gold,ml}` as Delta tables
+plus `artifacts/ml_customer_features.parquet` and
+`artifacts/segment_clv.png`. Great Expectations validations are baked into the
+script so it fails fast if predicted CLV is negative or emails are malformed.
 
 ## 🧪 Seed Data Options
 
@@ -165,14 +174,15 @@ dbt_get_started/
 │   ├── raw_customers.csv
 │   ├── raw_orders.csv
 │   ├── raw_order_items.csv
-│   └── raw_products.csv
+│   ├── raw_products.csv
+│   └── raw_categories.csv
 ├── my_first_project/              # Main dbt project
 │   ├── models/
 │   │   ├── staging/               # Raw data cleaning & standardization
-│   │   │   ├── stg_customers.sql
-│   │   │   ├── stg_orders.sql
-│   │   │   ├── stg_order_items.sql
-│   │   │   └── stg_products.sql
+│   │   │   ├── stg_ecommerce__users.sql
+│   │   │   ├── stg_ecommerce__orders.sql
+│   │   │   ├── stg_ecommerce__order_items.sql
+│   │   │   └── stg_ecommerce__products.sql
 │   │   ├── intermediate/          # Business logic & aggregations
 │   │   │   ├── int_customer_orders.sql
 │   │   │   ├── int_customer_rfm.sql
@@ -183,11 +193,13 @@ dbt_get_started/
 │   │   │   └── fct_product_performance.sql
 │   │   └── ml/                    # ML feature engineering
 │   │       └── ml_customer_features.sql
-│   ├── seeds/                     # Default seed folder (configure to include ../data_seeds)
-│   │   └── raw/
+│   ├── seeds/                     # Optional local seeds folder
 │   ├── tests/                     # Custom data quality tests
 │   ├── dbt_project.yml           # Project configuration
 │   └── my_dbt.duckdb             # DuckDB database
+├── pyspark_pipeline/             # Local PySpark/Delta implementation
+│   ├── __init__.py
+│   └── pipeline.py               # Entry point for ecommerce_pyspark_end_to_end tutorial
 ├── dbt_tutorial.md               # Basic tutorial
 ├── ecommerce_pipeline_example.md # E-commerce pipeline guide
 ├── ecommerce_pipeline_tdd.md     # TDD approach guide
@@ -205,7 +217,7 @@ dbt_get_started/
 
 ### Custom Tests
 ```sql
-# tests/assert_positive_clv.sql
+# tests/assert_positive_revenue.sql
 select *
 from {{ ref('fct_customer_metrics') }}
 where predicted_clv_12m < 0
@@ -213,14 +225,14 @@ where predicted_clv_12m < 0
 
 ### Running Tests
 ```bash
-# All tests
-dbt test
+# All tests (run from repo root)
+uv run dbt test --project-dir my_first_project
 
 # Specific model
-dbt test --select fct_customer_metrics
+uv run dbt test --project-dir my_first_project --select fct_customer_metrics
 
 # By tag
-dbt test --select tag:customer
+uv run dbt test --project-dir my_first_project --select tag:customer
 ```
 
 ## 📊 Example Queries

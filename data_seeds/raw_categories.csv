@@ -1,0 +1,9 @@
+category_id,category_name,parent_category
+1,Electronics,
+2,Smartphones,Electronics
+3,Laptops,Electronics
+4,Clothing,
+5,Men's Clothing,Clothing
+6,Women's Clothing,Clothing
+7,Home & Garden,
+8,Kitchen,Home & Garden

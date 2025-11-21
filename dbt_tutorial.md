@@ -137,7 +137,7 @@ my_first_project:
 ### 3. Create Sample Data
 First, let's create a CSV file with sample data:
 
-`seeds/raw_users.csv`:
+`seeds/raw_customers.csv`:
 ```csv
 id,first_name,last_name,email,created_at
 1,John,Doe,john.doe@email.com,2023-01-15
@@ -163,7 +163,7 @@ SELECT
     CURRENT_TIMESTAMP as transformed_at,
     -- Calculate days since registration
     CURRENT_DATE - CAST(created_at AS DATE) as days_since_registration
-FROM {{ ref('raw_users') }}
+FROM {{ ref('raw_customers') }}
 WHERE created_at IS NOT NULL
 ```
 
@@ -174,7 +174,7 @@ Create `models/schema.yml`:
 version: 2
 
 seeds:
-  - name: raw_users
+  - name: raw_customers
     description: Raw user data from CSV file
     columns:
       - name: id
@@ -265,7 +265,7 @@ SELECT * FROM {{ ref('raw_events') }}
 ```sql
 {{ config(materialized='ephemeral') }}
 
-SELECT * FROM {{ ref('raw_users') }}
+SELECT * FROM {{ ref('raw_customers') }}
 WHERE created_at IS NOT NULL
 ```
 
